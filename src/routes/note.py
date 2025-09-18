@@ -120,3 +120,35 @@ def reorder_notes():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@note_bp.route('/translate', methods=['POST'])
+def translate_note():
+    """Translate note content to target language"""
+    try:
+        from src.llm import translate_text
+        
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        title = data.get('title', '')
+        content = data.get('content', '')
+        target_language = data.get('target_language', 'Chinese')
+        
+        if not title and not content:
+            return jsonify({'error': 'No text to translate'}), 400
+        
+        result = {}
+        
+        # Translate title if provided
+        if title.strip():
+            result['translated_title'] = translate_text(title, target_language)
+        
+        # Translate content if provided
+        if content.strip():
+            result['translated_content'] = translate_text(content, target_language)
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Translation failed: {str(e)}'}), 500
+
