@@ -1,12 +1,14 @@
 from flask import Blueprint, jsonify, request
+from datetime import date, time
+import json
 from src.models.note import Note, db
 
 note_bp = Blueprint('note', __name__)
 
 @note_bp.route('/notes', methods=['GET'])
 def get_notes():
-    """Get all notes, ordered by most recently updated"""
-    notes = Note.query.order_by(Note.updated_at.desc()).all()
+    """Get all notes ordered by position (if set) then most recently updated"""
+    notes = Note.query.order_by(Note.position.asc().nullsfirst(), Note.updated_at.desc()).all()
     return jsonify([note.to_dict() for note in notes])
 
 @note_bp.route('/notes', methods=['POST'])
@@ -16,8 +18,24 @@ def create_note():
         data = request.json
         if not data or 'title' not in data or 'content' not in data:
             return jsonify({'error': 'Title and content are required'}), 400
-        
-        note = Note(title=data['title'], content=data['content'])
+        # optional fields
+        tags = data.get('tags')
+        event_date = data.get('event_date')
+        event_time = data.get('event_time')
+
+        # ensure tags stored as JSON string
+        tags_json = json.dumps(tags) if tags is not None else None
+
+        # determine position: append to end (max position + 1)
+        max_pos = db.session.query(db.func.max(Note.position)).scalar() or 0
+        note = Note(
+            title=data['title'],
+            content=data['content'],
+            tags=tags_json,
+            event_date=event_date,
+            event_time=event_time,
+            position=(max_pos or 0) + 1
+        )
         db.session.add(note)
         db.session.commit()
         return jsonify(note.to_dict()), 201
@@ -43,6 +61,13 @@ def update_note(note_id):
         
         note.title = data.get('title', note.title)
         note.content = data.get('content', note.content)
+        # handle optional fields
+        if 'tags' in data:
+            note.tags = json.dumps(data.get('tags') or [])
+        if 'event_date' in data:
+            note.event_date = data.get('event_date')
+        if 'event_time' in data:
+            note.event_time = data.get('event_time')
         db.session.commit()
         return jsonify(note.to_dict())
     except Exception as e:
@@ -73,4 +98,57 @@ def search_notes():
     ).order_by(Note.updated_at.desc()).all()
     
     return jsonify([note.to_dict() for note in notes])
+
+
+@note_bp.route('/notes/reorder', methods=['POST'])
+def reorder_notes():
+    """Accept a list of ids in desired order and persist position values"""
+    try:
+        data = request.json
+        if not isinstance(data, list):
+            return jsonify({'error': 'Expected a list of note IDs'}), 400
+
+        # Iterate and update positions
+        for idx, nid in enumerate(data, start=1):
+            note = Note.query.get(nid)
+            if note:
+                note.position = idx
+
+        db.session.commit()
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@note_bp.route('/translate', methods=['POST'])
+def translate_note():
+    """Translate note content to target language"""
+    try:
+        from src.llm import translate_text
+        
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        title = data.get('title', '')
+        content = data.get('content', '')
+        target_language = data.get('target_language', 'Chinese')
+        
+        if not title and not content:
+            return jsonify({'error': 'No text to translate'}), 400
+        
+        result = {}
+        
+        # Translate title if provided
+        if title.strip():
+            result['translated_title'] = translate_text(title, target_language)
+        
+        # Translate content if provided
+        if content.strip():
+            result['translated_content'] = translate_text(content, target_language)
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Translation failed: {str(e)}'}), 500
 

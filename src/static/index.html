@@ -200,6 +200,36 @@
             transform: translateY(-1px);
         }
 
+        .btn-translate {
+            background: #6f42c1;
+            color: white;
+        }
+
+        .btn-translate:hover {
+            background: #5a32a3;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+            transform: translateY(-1px);
+        }
+
         .form-group {
             margin-bottom: 20px;
         }
@@ -346,6 +376,7 @@
                     <div class="editor-actions" id="editorActions" style="display: none;">
                         <button class="btn btn-save" id="saveBtn">💾 Save</button>
                         <button class="btn btn-delete" id="deleteBtn">🗑️ Delete</button>
+                        <button class="btn btn-translate" id="translateBtn">🌐 Translate</button>
                     </div>
                 </div>
 
@@ -360,6 +391,42 @@
                     <div class="form-group">
                         <label class="form-label" for="noteContent">Content</label>
                         <textarea class="form-textarea" id="noteContent" placeholder="Start writing your note..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="noteTags">Tags (comma separated)</label>
+                        <input type="text" class="form-input" id="noteTags" placeholder="tag1, tag2, ...">
+                    </div>
+
+                    <div class="form-group" style="display:flex; gap:10px;">
+                        <div style="flex:1;">
+                            <label class="form-label" for="noteEventDate">Event Date</label>
+                            <input type="date" class="form-input" id="noteEventDate">
+                        </div>
+                        <div style="flex:1;">
+                            <label class="form-label" for="noteEventTime">Event Time</label>
+                            <input type="time" class="form-input" id="noteEventTime">
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="translateSection" style="display: none;">
+                        <label class="form-label" for="targetLanguage">Translate to:</label>
+                        <select class="form-input" id="targetLanguage">
+                            <option value="Chinese">Chinese</option>
+                            <option value="Spanish">Spanish</option>
+                            <option value="French">French</option>
+                            <option value="German">German</option>
+                            <option value="Japanese">Japanese</option>
+                            <option value="Korean">Korean</option>
+                            <option value="Italian">Italian</option>
+                            <option value="Portuguese">Portuguese</option>
+                            <option value="Russian">Russian</option>
+                            <option value="Arabic">Arabic</option>
+                        </select>
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-primary" id="executeTranslateBtn">🔄 Translate Content</button>
+                            <button class="btn btn-secondary" id="cancelTranslateBtn">❌ Cancel</button>
+                        </div>
                     </div>
                 </div>
 
@@ -389,6 +456,9 @@
                 document.getElementById('newNoteBtn').addEventListener('click', () => this.createNewNote());
                 document.getElementById('saveBtn').addEventListener('click', () => this.saveNote());
                 document.getElementById('deleteBtn').addEventListener('click', () => this.deleteNote());
+                document.getElementById('translateBtn').addEventListener('click', () => this.showTranslateSection());
+                document.getElementById('executeTranslateBtn').addEventListener('click', () => this.translateNote());
+                document.getElementById('cancelTranslateBtn').addEventListener('click', () => this.hideTranslateSection());
                 document.getElementById('searchBox').addEventListener('input', (e) => this.searchNotes(e.target.value));
                 
                 // Auto-save on content change (debounced)
@@ -404,6 +474,9 @@
                 
                 document.getElementById('noteTitle').addEventListener('input', autoSave);
                 document.getElementById('noteContent').addEventListener('input', autoSave);
+                document.getElementById('noteTags').addEventListener('input', autoSave);
+                document.getElementById('noteEventDate').addEventListener('change', autoSave);
+                document.getElementById('noteEventTime').addEventListener('change', autoSave);
             }
 
             async loadNotes() {
@@ -434,12 +507,56 @@
 
                 notesList.innerHTML = this.notes.map(note => `
                     <div class="note-item ${this.currentNote && this.currentNote.id === note.id ? 'active' : ''}" 
-                         data-note-id="${note.id}" onclick="noteTaker.selectNote(${note.id})">
+                        data-note-id="${note.id}" onclick="noteTaker.selectNote(${note.id})" draggable="true">
                         <div class="note-title">${this.escapeHtml(note.title || 'Untitled')}</div>
                         <div class="note-preview">${this.escapeHtml(note.content || 'No content')}</div>
                         <div class="note-date">${this.formatDate(note.updated_at)}</div>
+                        <div class="note-meta">${(note.tags && note.tags.length) ? '<span style="font-size:12px;color:#666;">Tags: ' + this.escapeHtml((note.tags || []).join(', ')) + '</span>' : ''}
+                        ${(note.event_date || note.event_time) ? '<div style="font-size:12px;color:#888;margin-top:4px;">' + (note.event_date ? ('Date: ' + this.escapeHtml(note.event_date)) : '') + (note.event_time ? (' Time: ' + this.escapeHtml(note.event_time)) : '') + '</div>' : ''}
+                        </div>
                     </div>
                 `).join('');
+                // attach drag handlers
+                Array.from(document.querySelectorAll('.note-item')).forEach(item => {
+                    item.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('text/plain', item.getAttribute('data-note-id'));
+                        item.classList.add('dragging');
+                    });
+
+                    item.addEventListener('dragend', (e) => {
+                        item.classList.remove('dragging');
+                    });
+
+                    item.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        const dragging = document.querySelector('.note-item.dragging');
+                        if (!dragging || dragging === item) return;
+                        const rect = item.getBoundingClientRect();
+                        const after = (e.clientY - rect.top) > (rect.height / 2);
+                        if (after) {
+                            item.parentNode.insertBefore(dragging, item.nextSibling);
+                        } else {
+                            item.parentNode.insertBefore(dragging, item);
+                        }
+                    });
+
+                    item.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        // After drop, collect current order and send to server
+                        const ids = Array.from(document.querySelectorAll('.note-item')).map(n => parseInt(n.getAttribute('data-note-id')));
+                        fetch('/api/notes/reorder', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(ids)
+                        }).then(res => {
+                            if (!res.ok) throw new Error('Failed to save order');
+                            // reload notes from server to sync positions
+                            this.loadNotes();
+                        }).catch(err => {
+                            this.showMessage('Error saving order: ' + err.message, 'error');
+                        });
+                    });
+                });
             }
 
             async selectNote(noteId) {
@@ -452,6 +569,9 @@
                 
                 document.getElementById('noteTitle').value = note.title || '';
                 document.getElementById('noteContent').value = note.content || '';
+                document.getElementById('noteTags').value = (note.tags && note.tags.length) ? note.tags.join(', ') : '';
+                document.getElementById('noteEventDate').value = note.event_date || '';
+                document.getElementById('noteEventTime').value = note.event_time || '';
                 document.getElementById('editorTitle').textContent = note.title || 'Untitled Note';
             }
 
@@ -460,6 +580,9 @@
                     id: null,
                     title: '',
                     content: '',
+                    tags: [],
+                    event_date: null,
+                    event_time: null,
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 };
@@ -467,6 +590,9 @@
                 this.showEditor();
                 document.getElementById('noteTitle').value = '';
                 document.getElementById('noteContent').value = '';
+                document.getElementById('noteTags').value = '';
+                document.getElementById('noteEventDate').value = '';
+                document.getElementById('noteEventTime').value = '';
                 document.getElementById('editorTitle').textContent = 'New Note';
                 document.getElementById('noteTitle').focus();
                 
@@ -504,9 +630,17 @@
                 }
 
                 try {
+                    const tagsRaw = document.getElementById('noteTags').value.trim();
+                    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+                    const event_date = document.getElementById('noteEventDate').value || null;
+                    const event_time = document.getElementById('noteEventTime').value || null;
+
                     const noteData = {
                         title: title || 'Untitled',
-                        content: content
+                        content: content,
+                        tags: tags,
+                        event_date: event_date,
+                        event_time: event_time
                     };
 
                     let response;
@@ -591,6 +725,9 @@
                         <div class="note-title">${this.escapeHtml(note.title || 'Untitled')}</div>
                         <div class="note-preview">${this.escapeHtml(note.content || 'No content')}</div>
                         <div class="note-date">${this.formatDate(note.updated_at)}</div>
+                        <div class="note-meta">${(note.tags && note.tags.length) ? '<span style="font-size:12px;color:#666;">Tags: ' + this.escapeHtml((note.tags || []).join(', ')) + '</span>' : ''}
+                        ${(note.event_date || note.event_time) ? '<div style="font-size:12px;color:#888;margin-top:4px;">' + (note.event_date ? ('Date: ' + this.escapeHtml(note.event_date)) : '') + (note.event_time ? (' Time: ' + this.escapeHtml(note.event_time)) : '') + '</div>' : ''}
+                        </div>
                     </div>
                 `).join('');
             }
@@ -628,6 +765,69 @@
                     return `${diffDays - 1} days ago`;
                 } else {
                     return date.toLocaleDateString();
+                }
+            }
+
+            showTranslateSection() {
+                if (!this.currentNote) {
+                    this.showMessage('Please select a note to translate', 'error');
+                    return;
+                }
+                document.getElementById('translateSection').style.display = 'block';
+            }
+
+            hideTranslateSection() {
+                document.getElementById('translateSection').style.display = 'none';
+            }
+
+            async translateNote() {
+                if (!this.currentNote) {
+                    this.showMessage('Please select a note to translate', 'error');
+                    return;
+                }
+
+                const targetLanguage = document.getElementById('targetLanguage').value;
+                const noteContent = document.getElementById('noteContent').value;
+                const noteTitle = document.getElementById('noteTitle').value;
+
+                if (!noteContent && !noteTitle) {
+                    this.showMessage('No content to translate', 'error');
+                    return;
+                }
+
+                this.showMessage('Translating...', 'loading');
+
+                try {
+                    const response = await fetch('/api/translate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            title: noteTitle,
+                            content: noteContent,
+                            target_language: targetLanguage
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Translation failed: ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    // Update the form with translated content
+                    if (result.translated_title) {
+                        document.getElementById('noteTitle').value = result.translated_title;
+                    }
+                    if (result.translated_content) {
+                        document.getElementById('noteContent').value = result.translated_content;
+                    }
+
+                    this.hideTranslateSection();
+                    this.showMessage(`Successfully translated to ${targetLanguage}`, 'success');
+                } catch (error) {
+                    this.showMessage(`Translation error: ${error.message}`, 'error');
                 }
             }
         }
