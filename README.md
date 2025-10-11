@@ -1,7 +1,18 @@
 [![Open in Codespaces](https://classroom.github.com/assets/launch-codespace-2972f46106e565e64193e422d61a12cf1da4916b45550586e14ef0a7c637dd04.svg)](https://classroom.github.com/open-in-codespaces?assignment_repo_id=20421450)
+
 # NoteTaker - Personal Note Management Application
 
 A modern, responsive web application for managing personal notes with a beautiful user interface and full CRUD functionality.
+
+## 🚀 Lab 2 Update: Cloud Deployment Ready
+
+This application has been refactored for cloud deployment with the following enhancements:
+- **Database**: Migrated from SQLite to PostgreSQL (Supabase compatible)
+- **Deployment**: Configured for Vercel serverless deployment
+- **Environment**: Secure environment variable management
+- **Scalability**: Ready for production cloud environments
+
+See `lab2_writeup.md` for detailed migration documentation.
 
 ## 🌟 Features
 

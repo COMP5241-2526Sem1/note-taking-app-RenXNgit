@@ -5,6 +5,12 @@ __pycache__/
 
 # Database
 *.db
+database/
+
+# Environment variables
+.env
+.env.local
+.env.production
 
 
 # C extensions
