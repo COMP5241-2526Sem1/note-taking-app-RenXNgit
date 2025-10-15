@@ -264,6 +264,32 @@ if DATABASE_URL.startswith('postgres'):
 - **安全第一**: 环境变量管理是云部署的基础
 - **测试驱动**: 每个步骤都需要充分验证
 
+一.steps
+1.让ai创建plan.md, 然后根据plan.md完成数据库更新为PostgreSQL，配置 Vercel部署
+![alt text](image1.png)
+2.提示ai写一个详细的部署指南DEPLOYMENT_GUIDE.md，根据指南完成部署
+![alt text](image-4.png)
+![alt text](image-5.png)
+![alt text](image-6.png)
+![alt text](image-7.png)
+3.测试部署之后的功能，比如创建笔记，拖拽交换笔记顺序以及翻译功能可以正常使用。
+![alt text](image-9.png)
+
+二.lessons learnt
+1.ai会根据提示信息，完成更好的app增加新内容，但是目前不需要的时候需要提示ai不新增功能
+![alt text](image-3.png)
+
+
+
+2.第一次部署失败，原因是ai生成的psycopg2-binary指定了版本号。
+![alt text](image-2.png)
+
+3.有时候代码比较多的情况，在codebase中ask不能找到合适的解决方案，可以把问题单独询问ai，不依赖。比如在已有代码利用ai的提示部署之后，点开链接不能打开note_taking app, 在codebase中ask不能找到合适的解决方案，于是脱离这个app利用ai，得到了一些答案，然后根据ai的提示将supabase的ipv6改成Supavisor transaction mode
+![alt text](image.png)
+
+4.可以根据ai的指示，比较出问题所在。在部署到vercel后翻译功能不能用，ask ai的可能没做的操作都有，然后echo $GITHUB_TOKEN，发现是因为codespace用到是ghu_ token，并不是生成的GITHUB_TOKEN，之前生成的GITHUB_TOKEN没有生效，后来按照ai提示的重新生成GITHUB_TOKEN，并且重新生成部署，可以有翻译功能。
+![alt text](image-8.png)
+
 ### 未来改进方向
 1. 添加数据库监控和日志
 2. 实现自动化测试和部署
