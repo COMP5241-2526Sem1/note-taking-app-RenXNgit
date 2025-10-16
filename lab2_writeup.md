@@ -1,299 +1,143 @@
-# Lab 2 技术文档：笔记应用云部署实施报告
+# Lab 2 Exercise Technical Documentation: Notes App Cloud Deployment Implementation Report
 
-## 项目概述
+## Project Overview
 
-本实验将一个基于 SQLite 的 Flask 笔记应用成功迁移到云数据库（PostgreSQL），并部署到 Vercel 平台。这个过程解决了 SQLite 在 serverless 环境中无法持久化数据的核心问题。
+In this lab, we implemented GenAI features in the notes taking app (Translation and Notes Generation), successfully migrated a Flask notes app based on SQLite to a cloud database (PostgreSQL), and deployed it to the Vercel platform.
 
-## 技术背景
+### Original Architecture
+- **Backend Framework**: Flask + SQLAlchemy
+- **Database**: SQLite (local file database)
+- **Frontend**: Static HTML/CSS/JavaScript
+- **Deployment Method**: Local development server
 
-### 原始架构
-- **后端框架**: Flask + SQLAlchemy
-- **数据库**: SQLite (本地文件数据库)
-- **前端**: 静态 HTML/CSS/JavaScript
-- **部署方式**: 本地开发服务器
+### Target Architecture
+- **Backend Framework**: Flask + SQLAlchemy (unchanged)
+- **Database**: PostgreSQL (Supabase cloud database)
+- **Frontend**: Static files (unchanged)
+- **Deployment Platform**: Vercel Serverless Functions
 
-### 目标架构
-- **后端框架**: Flask + SQLAlchemy (保持不变)
-- **数据库**: PostgreSQL (Supabase 云数据库)
-- **前端**: 静态文件 (保持不变)
-- **部署平台**: Vercel Serverless Functions
+## Implementation Steps
 
-## 核心挑战
+### Step 1: Project Dependency Update
 
-### 1. SQLite 兼容性问题
-**问题**: Vercel 的 serverless 环境提供临时文件系统，每次函数调用后数据会丢失。
-**影响**: 无法实现数据持久化，应用无法正常运行。
-
-### 2. 环境变量管理
-**问题**: 硬编码的配置信息不适用于云环境。
-**影响**: 数据库连接、密钥管理等配置无法灵活调整。
-
-### 3. Serverless 部署配置
-**问题**: 传统 Flask 应用需要适配 serverless 架构。
-**影响**: 需要特殊的路由配置和应用入口点。
-
-## 实施步骤
-
-### 步骤 1: 项目依赖更新
-
-更新 `requirements.txt` 添加必需依赖：
+Update `requirements.txt` to add required dependencies:
 
 ```txt
-# 新增依赖
-psycopg2-binary==2.9.7    # PostgreSQL 数据库驱动
-python-dotenv==1.0.0      # 环境变量管理
+# New dependencies
+psycopg2-binary    # PostgreSQL database driver
+python-dotenv==1.0.0      # Environment variable management
 ```
 
-**理由**: 
-- `psycopg2-binary` 提供 PostgreSQL 连接支持
-- `python-dotenv` 实现环境变量的灵活管理
+### Step 2: Database Configuration Refactoring
 
-### 步骤 2: 数据库配置重构
-
-修改 `src/main.py` 的数据库配置：
+Modify `src/main.py` database configuration:
 
 ```python
-# 添加环境变量支持
+# Add environment variable support
 from dotenv import load_dotenv
 load_dotenv()
 
-# 灵活的数据库配置
+# Flexible database configuration
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 if DATABASE_URL:
-    # 云数据库配置
+    # Cloud database configuration
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
     if DATABASE_URL.startswith('postgres'):
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
             'connect_args': {'sslmode': 'require'}
         }
 else:
-    # 本地开发 fallback
-    app.config['SQLALCHEMY_DATABASE_URI'] = f\"sqlite:///{DB_PATH}\"
+    # Local development fallback
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
 ```
+![alt text](image-10.png)
 
-**关键设计决策**:
-- 保留 SQLite 作为本地开发选项
-- 自动检测并配置 PostgreSQL SSL 连接
-- 环境变量优先，确保云部署的灵活性
+### Step 3: Setting Up Supabase
 
-### 步骤 3: Vercel 部署配置
+**3.1. Create a Supabase Project**
+1. Visit [supabase.com](https://supabase.com)
+2. Create a new project
+3. Record the project information
 
-创建 `vercel.json` 配置文件：
+**3.2. Obtain Connection Information**
+1. Go to Project Settings > Database
+2. Copy the connection string
+
+Example:
+```
+DATABASE_URL=postgresql://postgres.rlhdtbbsgtsssindqbsw:202510note-taking-app@aws-1-ap-south-1.pooler.supabase.com:6543/postgres
+```
+![alt text](image-11.png)
+
+### Step 4: Vercel Deployment
+
+**4.1. Create `vercel.json` configuration file:**
 
 ```json
 {
-  \"version\": 2,
-  \"builds\": [
-    {\"src\": \"src/main.py\", \"use\": \"@vercel/python\"}
+  "version": 2,
+  "builds": [
+    {"src": "src/main.py", "use": "@vercel/python"}
   ],
-  \"routes\": [
-    {\"src\": \"/api/(.*)\", \"dest\": \"src/main.py\"},
-    {\"src\": \"/(.*)\", \"dest\": \"src/main.py\"}
+  "routes": [
+    {"src": "/api/(.*)", "dest": "src/main.py"},
+    {"src": "/(.*)", "dest": "src/main.py"}
   ],
-  \"env\": {
-    \"FLASK_ENV\": \"production\"
+  "env": {
+    "FLASK_ENV": "production"
   }
 }
 ```
 
-**配置说明**:
-- 指定 Python 运行时
-- 配置路由规则，确保 API 和静态文件正确处理
-- 设置生产环境变量
+**4.2. Environment Variable Management**
+- Update `.env`, `.gitignore`
+- Local testing and validation (environment setup + dependency installation + app launch test)
 
-### 步骤 4: 环境变量管理
-
-创建 `.env.example` 模板文件：
-
-```env
-DATABASE_URL=postgresql://postgres:password@db.xyz.supabase.co:5432/postgres
-SECRET_KEY=your-secret-key-here
-FLASK_ENV=development
-```
-
-更新 `.gitignore` 确保安全：
-
-```gitignore
-# 新增内容
-database/
-.env
-.env.local
-.env.production
-```
-
-### 步骤 5: Supabase 数据库设置
-
-#### 5.1 创建 Supabase 项目
-1. 访问 [supabase.com](https://supabase.com)
-2. 创建新项目
-3. 记录项目信息
-
-#### 5.2 获取连接信息
-1. 进入项目 Settings > Database
-2. 复制 Connection string
-3. 替换密码占位符
-
-示例连接字符串：
-```
-postgresql://postgres.xyz:password@aws-0-region.pooler.supabase.com:5432/postgres
-```
-
-### 步骤 6: 本地测试验证
-
-#### 6.1 环境配置
-```bash
-# 复制环境变量模板
-cp .env.example .env
-
-# 编辑 .env 文件，填入实际的数据库连接信息
-```
-
-#### 6.2 依赖安装
-```bash
-pip install -r requirements.txt
-```
-
-#### 6.3 应用启动测试
-```bash
-python src/main.py
-```
-
-**验证清单**:
-- [x] 应用启动无错误
-- [x] 数据库表自动创建
-- [x] API 端点响应正常
-- [x] 前端界面加载成功
-- [x] CRUD 操作正常工作
-
-### 步骤 7: Vercel 部署
-
-#### 7.1 GitHub 准备
+**4.3. GitHub Preparation**
 ```bash
 git add .
-git commit -m \"feat: migrate to PostgreSQL and add Vercel support\"
+git commit -m "feat: migrate to PostgreSQL and add Vercel support"
 git push origin main
 ```
 
-#### 7.2 Vercel 配置
-1. 登录 [vercel.com](https://vercel.com)
-2. 导入 GitHub 仓库
-3. 配置环境变量：
-   - `DATABASE_URL`: Supabase 连接字符串
-   - `SECRET_KEY`: 强随机字符串
+**4.4. Vercel Configuration**
+1. Log in to [vercel.com](https://vercel.com)
+2. Import GitHub repository
+3. Configure environment variables:
+   - `DATABASE_URL`: Supabase connection string
+   - `SECRET_KEY`: Strong random string
 
-#### 7.3 部署验证
-- [x] 部署成功无错误
-- [x] 应用可正常访问
-- [x] 数据库连接正常
-- [x] 所有功能正常工作
+**4.5. Deployment Verification**
+- [x] Deployment succeeds without errors
+- [x] Application is accessible
+- [x] Database connection is normal
+- [x] All features work, such as creating notes, drag-and-drop note reordering, translation feature, notes generation feature, and “Generate notes” function extended to extract date and time (if available) all work correctly
 
-## 遇到的挑战与解决方案
+![alt text](image-14.png)
 
-### 挑战 1: PostgreSQL SSL 连接
-**问题**: 云数据库默认要求 SSL 连接，但 SQLAlchemy 默认不启用。
-**解决方案**: 
-```python
-if DATABASE_URL.startswith('postgres'):
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'connect_args': {'sslmode': 'require'}
-    }
-```
+### Step 5: Handling API Keys
 
-### 挑战 2: 环境变量加载时机
-**问题**: 环境变量需要在应用配置之前加载。
-**解决方案**: 在文件顶部立即调用 `load_dotenv()`。
+1. Generate Token
+2. Add API key in Vercel ![alt text](image-12.png)
+3. Store locally in `.env`, include `.env` in `.gitignore`
 
-### 挑战 3: Vercel 路由配置
-**问题**: 静态文件和 API 路由需要正确配置。
-**解决方案**: 使用通配符路由，确保所有请求都能正确处理。
+## Lessons Learned
 
-## 技术学习收获
-
-### 1. Serverless 架构理解
-- 学习了 serverless 函数的工作原理
-- 理解了临时文件系统的限制
-- 掌握了云函数的最佳实践
-
-### 2. 数据库迁移策略
-- 掌握了从 SQLite 到 PostgreSQL 的迁移方法
-- 学会了维护向后兼容性的设计
-- 理解了云数据库的连接配置
-
-### 3. DevOps 实践
-- 学习了环境变量的安全管理
-- 掌握了 CI/CD 的基本流程
-- 理解了配置文件的重要性
-
-## 性能和安全考虑
-
-### 性能优化
-1. **连接池**: PostgreSQL 支持更好的连接池管理
-2. **查询优化**: 云数据库提供查询性能监控
-3. **缓存策略**: 可配置 Redis 等缓存层
-
-### 安全措施
-1. **环境变量**: 敏感信息不硬编码
-2. **SSL 连接**: 数据库连接加密
-3. **访问控制**: Supabase 提供行级安全策略
-
-## 部署后验证
-
-### 功能测试
-- [x] 用户注册和登录
-- [x] 笔记创建、编辑、删除
-- [x] 笔记搜索功能
-- [x] 数据持久化验证
-
-### 性能测试
-- [x] 页面加载速度 < 2秒
-- [x] API 响应时间 < 500ms
-- [x] 数据库查询优化
-
-## 总结与反思
-
-这次实验成功地将传统的 Flask 应用迁移到了现代的 serverless 架构。主要成就包括：
-
-1. **技术升级**: 从本地 SQLite 升级到云 PostgreSQL
-2. **架构现代化**: 适配 serverless 部署模式
-3. **运维改进**: 实现了环境变量和配置管理的最佳实践
-
-### 经验总结
-- **规划重要**: 详细的迁移计划确保了平滑过渡
-- **向后兼容**: 保持本地开发环境的可用性很重要
-- **安全第一**: 环境变量管理是云部署的基础
-- **测试驱动**: 每个步骤都需要充分验证
-
-一.steps
-1.让ai创建plan.md, 然后根据plan.md完成数据库更新为PostgreSQL，配置 Vercel部署
-![alt text](image1.png)
-2.提示ai写一个详细的部署指南DEPLOYMENT_GUIDE.md，根据指南完成部署
-![alt text](image-4.png)
-![alt text](image-5.png)
-![alt text](image-6.png)
-![alt text](image-7.png)
-3.测试部署之后的功能，比如创建笔记，拖拽交换笔记顺序以及翻译功能可以正常使用。
-![alt text](image-9.png)
-
-二.lessons learnt
-1.ai会根据提示信息，完成更好的app增加新内容，但是目前不需要的时候需要提示ai不新增功能
+1. AI can add new content to the app according to prompts, but if new features are not needed, it’s important to instruct AI not to add them.
 ![alt text](image-3.png)
 
-
-
-2.第一次部署失败，原因是ai生成的psycopg2-binary指定了版本号。
+2. First deployment failed because the AI-generated `psycopg2-binary` specified a version number.
 ![alt text](image-2.png)
 
-3.有时候代码比较多的情况，在codebase中ask不能找到合适的解决方案，可以把问题单独询问ai，不依赖。比如在已有代码利用ai的提示部署之后，点开链接不能打开note_taking app, 在codebase中ask不能找到合适的解决方案，于是脱离这个app利用ai，得到了一些答案，然后根据ai的提示将supabase的ipv6改成Supavisor transaction mode
+3. After deploying based on AI’s prompts, the note_taking_app could not be opened via the link. The reason was local network did not support IPv6. Found an alternative in Supabase: changed its IPv6 to Supavisor transaction mode.
 ![alt text](image.png)
 
-4.可以根据ai的指示，比较出问题所在。在部署到vercel后翻译功能不能用，ask ai的可能没做的操作都有，然后echo $GITHUB_TOKEN，发现是因为codespace用到是ghu_ token，并不是生成的GITHUB_TOKEN，之前生成的GITHUB_TOKEN没有生效，后来按照ai提示的重新生成GITHUB_TOKEN，并且重新生成部署，可以有翻译功能。
+4. By following AI instructions, problems can be identified. After deploying to Vercel, the translation feature was not working. Running `echo $GITHUB_TOKEN` revealed that Codespaces used `ghu_` token, not the generated `GITHUB_TOKEN`. The previously generated `GITHUB_TOKEN` was not effective. Regenerated `GITHUB_TOKEN` and redeployed as per AI’s advice; translation feature then worked.
 ![alt text](image-8.png)
+![alt text](image-16.png)
 
-### 未来改进方向
-1. 添加数据库监控和日志
-2. 实现自动化测试和部署
-3. 考虑添加缓存层提升性能
-4. 扩展为微服务架构
+5. Practiced extending the “Generate notes” function to extract date and time (if available), and verified successful operation.
+![alt text](image-13.png)
 
-这次实验不仅解决了技术问题，更重要的是学习了现代云应用开发的完整流程，为后续的项目开发奠定了坚实基础。
+6. Added prompts such as "Translating...", "Translation successful", and "Generating notes. Wait for a moment, please...".

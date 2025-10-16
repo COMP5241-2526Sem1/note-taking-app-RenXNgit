@@ -182,20 +182,28 @@ def extract_notes():
         lang = data.get('lang', 'English')
 
         # Call LLM helper
-        raw = extract_structured_notes(user_input, lang=lang)
+        res = extract_structured_notes(user_input, lang=lang)
 
-        # Try to extract a JSON object from the model response
-        import re
-        m = re.search(r"\{.*\}", raw, re.S)
-        if not m:
-            return jsonify({'error': 'Could not parse model response', 'raw': raw}), 500
+        # If the helper returned a dict already, use it. Otherwise try to
+        # extract JSON from a raw string.
+        parsed = None
+        if isinstance(res, dict):
+            parsed = res
+        else:
+            import re
+            m = re.search(r"\{.*\}", str(res), re.S)
+            if m:
+                parsed = json.loads(m.group(0))
 
-        parsed = json.loads(m.group(0))
+        if not parsed:
+            return jsonify({'error': 'Could not parse model response', 'raw': res}), 500
 
         # Normalize keys (case-insensitive common keys)
         title = parsed.get('Title') or parsed.get('title') or ''
         notes_text = parsed.get('Notes') or parsed.get('notes') or parsed.get('Content') or parsed.get('content') or ''
         tags = parsed.get('Tags') or parsed.get('tags') or []
+        event_date = parsed.get('Event Date') or parsed.get('event_date') or parsed.get('EventDate') or parsed.get('eventDate') or None
+        event_time = parsed.get('Event Time') or parsed.get('event_time') or parsed.get('EventTime') or parsed.get('eventTime') or None
 
         # Ensure tags is a list
         if isinstance(tags, str):
@@ -204,7 +212,7 @@ def extract_notes():
             except Exception:
                 tags = [t.strip() for t in tags.split(',') if t.strip()]
 
-        return jsonify({'title': title, 'content': notes_text, 'tags': tags}), 200
+        return jsonify({'title': title, 'content': notes_text, 'tags': tags, 'event_date': event_date, 'event_time': event_time}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
