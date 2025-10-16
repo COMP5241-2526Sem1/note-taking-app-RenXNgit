@@ -322,6 +322,13 @@
             color: #666;
         }
 
+        /* prominent generate message */
+        .generate-msg {
+            color: #0066cc; /* bright blue */
+            font-weight: 700;
+            font-size: 1.05rem;
+        }
+
         .error {
             background: #f8d7da;
             color: #721c24;
@@ -398,7 +405,7 @@
                         <button class="btn btn-primary" id="sidebarGenerateSubmit">Generate</button>
                         <button class="btn btn-secondary" id="sidebarGenerateCancel">Cancel</button>
                     </div>
-                    <div id="sidebarGenerateMsg" style="margin-top:8px;color:#666;display:none;">Generating notes, Wait for a moment, please...</div>
+                    <div id="sidebarGenerateMsg" class="generate-msg" style="margin-top:8px;display:none;">Generating notes, Wait for a moment, please...</div>
                 </div>
                 
                 <div class="notes-list" id="notesList">
@@ -411,15 +418,14 @@
                     <h2 class="editor-title" id="editorTitle">Select a note to edit</h2>
                     <div class="editor-actions" id="editorActions" style="display: none;">
                         <button class="btn btn-save" id="saveBtn">💾 Save</button>
-                        <button class="btn btn-primary" id="generateBtn">✨ Generate</button>
                         <button class="btn btn-delete" id="deleteBtn">🗑️ Delete</button>
                         <div style="position:relative;">
                             <button class="btn btn-translate" id="translateBtn">🌐 Translate</button>
                             <div class="translate-popover" id="translatePopover" role="dialog" aria-hidden="true">
                                 <label class="form-label" for="targetLanguage">Translate to:</label>
                                 <select class="form-input" id="targetLanguage">
+                                    <option value="Chinese" selected>Chinese</option>
                                     <option value="English">English</option>
-                                    <option value="Chinese">Chinese</option>
                                     <option value="Spanish">Spanish</option>
                                     <option value="French">French</option>
                                     <option value="German">German</option>
@@ -508,7 +514,6 @@
                 document.getElementById('sidebarGenerateCancel').addEventListener('click', (e) => { e.preventDefault(); document.getElementById('sidebarGenerateArea').style.display = 'none'; });
                 document.getElementById('sidebarGenerateSubmit').addEventListener('click', (e) => { e.preventDefault(); this.generateNoteQuickInline(); });
                 document.getElementById('saveBtn').addEventListener('click', () => this.saveNote());
-                document.getElementById('generateBtn').addEventListener('click', () => this.generateFromLLM());
                 document.getElementById('deleteBtn').addEventListener('click', () => this.deleteNote());
                 document.getElementById('translateBtn').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -549,42 +554,7 @@
                 document.getElementById('noteEventTime').addEventListener('change', autoSave);
             }
 
-            async generateFromLLM() {
-                // Take current content (or title+content) and ask backend to extract structured notes
-                const title = document.getElementById('noteTitle').value.trim();
-                const content = document.getElementById('noteContent').value.trim();
-
-                const inputText = (title ? (title + '. ') : '') + content;
-                if (!inputText.trim()) {
-                    this.showMessage('Enter some text to generate structured notes', 'error');
-                    return;
-                }
-
-                this.showMessage('Generating structured notes...', 'loading');
-
-                try {
-                    const response = await fetch('/api/notes/extract', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ input: inputText, lang: 'English' })
-                    });
-
-                    if (!response.ok) throw new Error('Failed to generate notes');
-
-                    const result = await response.json();
-                    if (result.error) throw new Error(result.error);
-
-                    if (result.title) document.getElementById('noteTitle').value = result.title;
-                    if (result.content) document.getElementById('noteContent').value = result.content;
-                    if (Array.isArray(result.tags)) {
-                        document.getElementById('noteTags').value = result.tags.join(', ');
-                    }
-
-                    this.showMessage('Generated fields filled. Review and save when ready.', 'success');
-                } catch (err) {
-                    this.showMessage('Generation error: ' + err.message, 'error');
-                }
-            }
+            
 
             async generateNoteQuickInline() {
                 const inputEl = document.getElementById('sidebarGenerateInput');
