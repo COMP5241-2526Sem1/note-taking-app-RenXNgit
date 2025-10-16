@@ -138,17 +138,73 @@ def translate_note():
             return jsonify({'error': 'No text to translate'}), 400
         
         result = {}
-        
+
         # Translate title if provided
         if title.strip():
             result['translated_title'] = translate_text(title, target_language)
-        
+
         # Translate content if provided
         if content.strip():
             result['translated_content'] = translate_text(content, target_language)
-        
+
+        # If tags provided, translate each tag (preserve order)
+        tags = data.get('tags')
+        if tags and isinstance(tags, list) and len(tags) > 0:
+            translated_tags = []
+            for t in tags:
+                if not isinstance(t, str) or not t.strip():
+                    translated_tags.append('')
+                    continue
+                # translate single tag word/phrase
+                translated_tags.append(translate_text(t, target_language))
+            result['translated_tags'] = translated_tags
+
         return jsonify(result), 200
         
     except Exception as e:
         return jsonify({'error': f'Translation failed: {str(e)}'}), 500
+
+
+@note_bp.route('/notes/extract', methods=['POST'])
+def extract_notes():
+    """Use the LLM to extract structured fields (title, notes, tags) from free-form input
+    Expects JSON: {"input": "...text...", "lang": "English"}
+    Returns: {title, content, tags}
+    """
+    try:
+        from src.llm import extract_structured_notes
+
+        data = request.json
+        if not data or 'input' not in data:
+            return jsonify({'error': 'No input provided'}), 400
+
+        user_input = data.get('input')
+        lang = data.get('lang', 'English')
+
+        # Call LLM helper
+        raw = extract_structured_notes(user_input, lang=lang)
+
+        # Try to extract a JSON object from the model response
+        import re
+        m = re.search(r"\{.*\}", raw, re.S)
+        if not m:
+            return jsonify({'error': 'Could not parse model response', 'raw': raw}), 500
+
+        parsed = json.loads(m.group(0))
+
+        # Normalize keys (case-insensitive common keys)
+        title = parsed.get('Title') or parsed.get('title') or ''
+        notes_text = parsed.get('Notes') or parsed.get('notes') or parsed.get('Content') or parsed.get('content') or ''
+        tags = parsed.get('Tags') or parsed.get('tags') or []
+
+        # Ensure tags is a list
+        if isinstance(tags, str):
+            try:
+                tags = json.loads(tags)
+            except Exception:
+                tags = [t.strip() for t in tags.split(',') if t.strip()]
+
+        return jsonify({'title': title, 'content': notes_text, 'tags': tags}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 

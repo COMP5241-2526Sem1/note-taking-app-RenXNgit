@@ -391,6 +391,15 @@
             <div class="sidebar">
                 <input type="text" class="search-box" id="searchBox" placeholder="🔍 Search notes...">
                 <button class="new-note-btn" id="newNoteBtn">✨ New Note</button>
+                <button class="new-note-btn" id="sidebarGenerateBtn" style="background: linear-gradient(90deg,#00b09b,#96c93d); margin-top:10px;">🤖 Generate Note</button>
+                <div id="sidebarGenerateArea" style="display:none; margin-top:10px;">
+                    <input id="sidebarGenerateInput" class="form-input" placeholder="Describe the note in one line..." style="margin-bottom:8px;" />
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-primary" id="sidebarGenerateSubmit">Generate</button>
+                        <button class="btn btn-secondary" id="sidebarGenerateCancel">Cancel</button>
+                    </div>
+                    <div id="sidebarGenerateMsg" style="margin-top:8px;color:#666;display:none;">Generating notes, Wait for a moment, please...</div>
+                </div>
                 
                 <div class="notes-list" id="notesList">
                     <div class="loading">Loading notes...</div>
@@ -402,6 +411,7 @@
                     <h2 class="editor-title" id="editorTitle">Select a note to edit</h2>
                     <div class="editor-actions" id="editorActions" style="display: none;">
                         <button class="btn btn-save" id="saveBtn">💾 Save</button>
+                        <button class="btn btn-primary" id="generateBtn">✨ Generate</button>
                         <button class="btn btn-delete" id="deleteBtn">🗑️ Delete</button>
                         <div style="position:relative;">
                             <button class="btn btn-translate" id="translateBtn">🌐 Translate</button>
@@ -485,7 +495,20 @@
 
             bindEvents() {
                 document.getElementById('newNoteBtn').addEventListener('click', () => this.createNewNote());
+                document.getElementById('sidebarGenerateBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const area = document.getElementById('sidebarGenerateArea');
+                    if (area.style.display === 'block') {
+                        area.style.display = 'none';
+                    } else {
+                        area.style.display = 'block';
+                        document.getElementById('sidebarGenerateInput').focus();
+                    }
+                });
+                document.getElementById('sidebarGenerateCancel').addEventListener('click', (e) => { e.preventDefault(); document.getElementById('sidebarGenerateArea').style.display = 'none'; });
+                document.getElementById('sidebarGenerateSubmit').addEventListener('click', (e) => { e.preventDefault(); this.generateNoteQuickInline(); });
                 document.getElementById('saveBtn').addEventListener('click', () => this.saveNote());
+                document.getElementById('generateBtn').addEventListener('click', () => this.generateFromLLM());
                 document.getElementById('deleteBtn').addEventListener('click', () => this.deleteNote());
                 document.getElementById('translateBtn').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -526,6 +549,97 @@
                 document.getElementById('noteEventTime').addEventListener('change', autoSave);
             }
 
+            async generateFromLLM() {
+                // Take current content (or title+content) and ask backend to extract structured notes
+                const title = document.getElementById('noteTitle').value.trim();
+                const content = document.getElementById('noteContent').value.trim();
+
+                const inputText = (title ? (title + '. ') : '') + content;
+                if (!inputText.trim()) {
+                    this.showMessage('Enter some text to generate structured notes', 'error');
+                    return;
+                }
+
+                this.showMessage('Generating structured notes...', 'loading');
+
+                try {
+                    const response = await fetch('/api/notes/extract', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ input: inputText, lang: 'English' })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to generate notes');
+
+                    const result = await response.json();
+                    if (result.error) throw new Error(result.error);
+
+                    if (result.title) document.getElementById('noteTitle').value = result.title;
+                    if (result.content) document.getElementById('noteContent').value = result.content;
+                    if (Array.isArray(result.tags)) {
+                        document.getElementById('noteTags').value = result.tags.join(', ');
+                    }
+
+                    this.showMessage('Generated fields filled. Review and save when ready.', 'success');
+                } catch (err) {
+                    this.showMessage('Generation error: ' + err.message, 'error');
+                }
+            }
+
+            async generateNoteQuickInline() {
+                const inputEl = document.getElementById('sidebarGenerateInput');
+                const msgEl = document.getElementById('sidebarGenerateMsg');
+                const userInput = inputEl.value && inputEl.value.trim();
+                if (!userInput) {
+                    this.showMessage('Please enter a short description to generate a note.', 'error');
+                    return;
+                }
+
+                // show inline generating message
+                msgEl.style.display = 'block';
+                this.showMessage('Generating notes, Wait for a moment, please...', 'loading');
+
+                try {
+                    const extractRes = await fetch('/api/notes/extract', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ input: userInput, lang: 'English' })
+                    });
+
+                    if (!extractRes.ok) throw new Error('Extraction failed');
+                    const extractJson = await extractRes.json();
+                    if (extractJson.error) throw new Error(extractJson.error);
+
+                    const notePayload = {
+                        title: extractJson.title || 'Untitled',
+                        content: extractJson.content || '',
+                        tags: Array.isArray(extractJson.tags) ? extractJson.tags : (extractJson.tags ? [extractJson.tags] : [])
+                    };
+
+                    const createRes = await fetch('/api/notes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(notePayload)
+                    });
+
+                    if (!createRes.ok) throw new Error('Failed to create note');
+                    const created = await createRes.json();
+
+                    // update UI
+                    this.notes.unshift(created);
+                    this.renderNotesList();
+                    this.selectNote(created.id);
+
+                    msgEl.style.display = 'none';
+                    document.getElementById('sidebarGenerateArea').style.display = 'none';
+                    inputEl.value = '';
+                    this.showMessage('Note generated and saved.', 'success');
+                } catch (err) {
+                    msgEl.style.display = 'none';
+                    this.showMessage('Generate note error: ' + err.message, 'error');
+                }
+            }
+
             async loadNotes() {
                 this.isLoading = true;
                 this.showMessage('Loading notes...', 'loading');
@@ -552,17 +666,20 @@
                     return;
                 }
 
-                notesList.innerHTML = this.notes.map(note => `
-                    <div class="note-item ${this.currentNote && this.currentNote.id === note.id ? 'active' : ''}" 
-                        data-note-id="${note.id}" onclick="noteTaker.selectNote(${note.id})" draggable="true">
-                        <div class="note-title">${this.escapeHtml(note.title || 'Untitled')}</div>
-                        <div class="note-preview">${this.escapeHtml(note.content || 'No content')}</div>
-                        <div class="note-date">${this.formatDate(note.updated_at)}</div>
-                        <div class="note-meta">${(note.tags && note.tags.length) ? '<span style="font-size:12px;color:#666;">Tags: ' + this.escapeHtml((note.tags || []).join(', ')) + '</span>' : ''}
-                        ${(note.event_date || note.event_time) ? '<div style="font-size:12px;color:#888;margin-top:4px;">' + (note.event_date ? ('Date: ' + this.escapeHtml(note.event_date)) : '') + (note.event_time ? (' Time: ' + this.escapeHtml(note.event_time)) : '') + '</div>' : ''}
+                    notesList.innerHTML = this.notes.map(note => {
+                        const tagsDisplay = (note.tags && note.tags.length) ? ('<div style="margin-top:8px;color:#666;">' + this.escapeHtml((note.tags || []).map(t => '#' + t).join(' ')) + '</div>') : '';
+                        const eventMeta = (note.event_date || note.event_time) ? ('<div style="font-size:12px;color:#888;margin-top:4px;">' + (note.event_date ? ('Date: ' + this.escapeHtml(note.event_date)) : '') + (note.event_time ? (' Time: ' + this.escapeHtml(note.event_time)) : '') + '</div>') : '';
+
+                        return `
+                        <div class="note-item ${this.currentNote && this.currentNote.id === note.id ? 'active' : ''}" 
+                            data-note-id="${note.id}" onclick="noteTaker.selectNote(${note.id})" draggable="true">
+                            <div class="note-title">${this.escapeHtml(note.title || 'Untitled')}</div>
+                            <div class="note-preview">${this.escapeHtml(note.content || 'No content')}</div>
+                            <div class="note-date">${this.formatDate(note.updated_at)}</div>
+                            <div class="note-meta">${tagsDisplay}${eventMeta}</div>
                         </div>
-                    </div>
-                `).join('');
+                    `;
+                    }).join('');
                 // attach drag handlers
                 Array.from(document.querySelectorAll('.note-item')).forEach(item => {
                     item.addEventListener('dragstart', (e) => {
@@ -766,17 +883,20 @@
                     return;
                 }
 
-                notesList.innerHTML = filteredNotes.map(note => `
+                notesList.innerHTML = filteredNotes.map(note => {
+                    const tagsDisplay = (note.tags && note.tags.length) ? ('<div style="margin-top:8px;color:#666;">' + this.escapeHtml((note.tags || []).map(t => '#' + t).join(' ')) + '</div>') : '';
+                    const eventMeta = (note.event_date || note.event_time) ? ('<div style="font-size:12px;color:#888;margin-top:4px;">' + (note.event_date ? ('Date: ' + this.escapeHtml(note.event_date)) : '') + (note.event_time ? (' Time: ' + this.escapeHtml(note.event_time)) : '') + '</div>') : '';
+
+                    return `
                     <div class="note-item ${this.currentNote && this.currentNote.id === note.id ? 'active' : ''}" 
                          data-note-id="${note.id}" onclick="noteTaker.selectNote(${note.id})">
                         <div class="note-title">${this.escapeHtml(note.title || 'Untitled')}</div>
                         <div class="note-preview">${this.escapeHtml(note.content || 'No content')}</div>
                         <div class="note-date">${this.formatDate(note.updated_at)}</div>
-                        <div class="note-meta">${(note.tags && note.tags.length) ? '<span style="font-size:12px;color:#666;">Tags: ' + this.escapeHtml((note.tags || []).join(', ')) + '</span>' : ''}
-                        ${(note.event_date || note.event_time) ? '<div style="font-size:12px;color:#888;margin-top:4px;">' + (note.event_date ? ('Date: ' + this.escapeHtml(note.event_date)) : '') + (note.event_time ? (' Time: ' + this.escapeHtml(note.event_time)) : '') + '</div>' : ''}
-                        </div>
+                        <div class="note-meta">${tagsDisplay}${eventMeta}</div>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             }
 
             showMessage(message, type) {
@@ -855,15 +975,17 @@
                 this.showMessage('Translating...', 'loading');
 
                 try {
+                    const tagsRaw = document.getElementById('noteTags').value.trim();
+                    const tagsArr = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+
                     const response = await fetch('/api/translate', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             title: noteTitle,
                             content: noteContent,
-                            target_language: targetLanguage
+                            target_language: targetLanguage,
+                            tags: tagsArr
                         })
                     });
 
@@ -879,6 +1001,10 @@
                     }
                     if (result.translated_content) {
                         document.getElementById('noteContent').value = result.translated_content;
+                    }
+                    // Update tags if backend returned translated_tags
+                    if (result.translated_tags && Array.isArray(result.translated_tags)) {
+                        document.getElementById('noteTags').value = result.translated_tags.join(', ');
                     }
 
                     this.hideTranslatePopover();
