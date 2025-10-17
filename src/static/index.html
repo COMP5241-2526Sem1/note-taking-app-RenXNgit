@@ -405,7 +405,7 @@
                         <button class="btn btn-primary" id="sidebarGenerateSubmit">Generate</button>
                         <button class="btn btn-secondary" id="sidebarGenerateCancel">Cancel</button>
                     </div>
-                    <div id="sidebarGenerateMsg" class="generate-msg" style="margin-top:8px;display:none;">Generating notes, Wait for a moment, please...</div>
+                    <div id="sidebarGenerateMsg" class="generate-msg" style="margin-top:8px;display:none;">Generating notes. Wait for a moment, please...</div>
                 </div>
                 
                 <div class="notes-list" id="notesList">
@@ -567,7 +567,7 @@
 
                 // show inline generating message
                 msgEl.style.display = 'block';
-                this.showMessage('Generating notes, Wait for a moment, please...', 'loading');
+                this.showMessage('Generating notes. Wait for a moment, please...', 'loading');
 
                 try {
                     const extractRes = await fetch('/api/notes/extract', {
